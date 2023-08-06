@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import css from './App.module.css';
 import imageAPI from '../services/images-api';
 import { Searchbar } from './Searchbar/Searchbar';
@@ -17,99 +17,91 @@ const Status = {
 let page = 1;
 const pageLimit = 12;
 
-export class App extends Component {
-  state = {
-    searchQuery: '',
-    images: [],
-    error: null,
-    status: Status.IDLE,
-    showButton: false,
-    showModal: false,
-    largePicture: '',
+export const App = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [images, setImages] = useState([]);
+  const [error, setError] = useState(null);
+  const [status, setStatus] = useState(Status.IDLE);
+  const [showButton, setShowButton] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [largePicture, setLargePicture] = useState('');
+
+  const handleFormSubmit = searchQuery => {
+    setSearchQuery(searchQuery);
   };
 
-  handleFormSubmit = searchQuery => {
-    this.setState({ searchQuery });
-  };
-
-  handleQuery = async () => {
+  const handleQuery = useRef(async searchQuery => {
     try {
       const data = await imageAPI.fetchImages({
-        whatToSearch: this.state.searchQuery,
+        whatToSearch: searchQuery,
         pageNumber: page,
         perPage: pageLimit,
       });
       const itemsForRender = data.hits;
       const totalItems = data.totalHits;
       const totalPage = Math.ceil(totalItems / pageLimit);
-      this.setState(prevState => ({
-        images: [...prevState.images, ...itemsForRender],
-        status: Status.RESOLVED,
-        error: null,
-      }));
+
+      setImages(state => [...state, ...itemsForRender]);
+      setStatus(Status.RESOLVED);
+      setError(null);
+
       if (page < totalPage) {
-        this.setState({ showButton: true });
+        setShowButton(true);
         page += 1;
       } else {
-        this.setState({ showButton: false });
+        setShowButton(false);
       }
     } catch (error) {
-      this.setState({ error, status: Status.REJECTED, showButton: false });
+      setError(error);
+      setStatus(Status.REJECTED);
+      setShowButton(false);
     }
-  };
+  });
 
-  componentDidUpdate(prevProps, prevState) {
-    const prevQuery = prevState.searchQuery;
-    const nextQuery = this.state.searchQuery;
-
-    if (prevQuery !== nextQuery) {
-      page = 1;
-      this.setState({ images: [], status: Status.PENDING, showButton: false });
-      this.handleQuery();
+  useEffect(() => {
+    if (searchQuery === '') {
+      return;
     }
-  }
+    page = 1;
+    setImages([]);
+    setStatus(Status.PENDING);
+    setShowButton(false);
+    handleQuery.current(searchQuery);
+  }, [searchQuery]);
 
-  handleButtonClick = () => {
-    this.setState({ status: Status.PENDING, showButton: false });
-    this.handleQuery();
+  const handleButtonClick = () => {
+    setStatus(Status.PENDING);
+    setShowButton(false);
+    handleQuery.current(searchQuery);
   };
 
-  handleImageGaleryItemClick = largePicture => {
-    this.setState({ largePicture });
-    this.toggleModal();
+  const handleImageGaleryItemClick = largePicture => {
+    setLargePicture(largePicture);
+    toggleModal();
   };
 
-  toggleModal = () => {
-    this.setState(({ showModal }) => ({
-      showModal: !showModal,
-    }));
+  const toggleModal = () => {
+    setShowModal(state => !state);
   };
 
-  render() {
-    const { images, error, status, showButton, showModal, largePicture } =
-      this.state;
+  return (
+    <div className={css.app}>
+      <Searchbar onSubmit={handleFormSubmit} />
 
-    return (
-      <div className={css.app}>
-        <Searchbar onSubmit={this.handleFormSubmit} />
+      {status === Status.RESOLVED && (
+        <ImageGallery
+          images={images}
+          onImageClick={handleImageGaleryItemClick}
+        />
+      )}
 
-        {status === 'resolved' && (
-          <ImageGallery
-            images={images}
-            onImageClick={this.handleImageGaleryItemClick}
-          />
-        )}
+      {showButton && <Button onButton={handleButtonClick} />}
 
-        {showButton && <Button onButton={this.handleButtonClick} />}
+      {status === Status.PENDING && <Loader />}
 
-        {status === 'pending' && <Loader />}
+      {status === Status.REJECTED && <p>{error.message}</p>}
 
-        {status === 'rejected' && <p>{error.message}</p>}
-
-        {showModal && (
-          <Modal onClose={this.toggleModal} largePicture={largePicture} />
-        )}
-      </div>
-    );
-  }
-}
+      {showModal && <Modal onClose={toggleModal} largePicture={largePicture} />}
+    </div>
+  );
+};
